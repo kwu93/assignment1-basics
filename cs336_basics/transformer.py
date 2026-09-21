@@ -90,8 +90,8 @@ class RotaryPositionalEmbedding(nn.Module):
 
     def forward(self, x, token_positions):
         x_rearr = rearrange(x, "... seq_len (pair_d_k two) -> ... seq_len pair_d_k two", two=2)
-        cos = self.Rcos[token_positions]
-        sin = self.Rsin[token_positions]
+        cos = self.Rcos[token_positions].to(x.dtype)
+        sin = self.Rsin[token_positions].to(x.dtype)
 
         out_even = cos * x_rearr[..., 0] - sin * x_rearr[..., 1]
         out_odd = sin * x_rearr[..., 0] + cos* x_rearr[..., 1]

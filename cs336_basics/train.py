@@ -89,10 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--rope-theta", type=float, default=10000.0)
 
     s = p.add_argument_group("schedule")
-    s.add_argument("--Tw", type=float, default=7)
-    s.add_argument("--Tc", type=float, default=21)
-    s.add_argument("--lrmin", type=float, default=0.1)
-    s.add_argument("--lrmax", type=float, default=1)
+    s.add_argument("--lrmax", type=float, default=1e-3, help="peak learning rate (Kingma et al. default)")
+    s.add_argument("--lrmin", type=float, default=None, help="final learning rate, defaults to lrmax / 10")
+    s.add_argument("--Tw", type=float, default=None, help="warmup steps, defaults to 3%% of train-iters")
+    s.add_argument("--Tc", type=float, default=None, help="cosine cycle length, defaults to train-iters")
 
     o = p.add_argument_group("optimizer")
     o.add_argument("--betas", type=float, nargs=2, default=(0.9, 0.95))
@@ -129,6 +129,13 @@ def config_from_args(args: argparse.Namespace) -> Config:
     kwargs["betas"] = tuple(kwargs["betas"])
     # argparse gives a str; torch factory fns need a real torch.dtype
     kwargs["dtype"] = getattr(torch, kwargs["dtype"])
+    if kwargs["Tc"] is None:
+        kwargs["Tc"] = kwargs["train_iters"]
+    if kwargs["Tw"] is None:
+        kwargs["Tw"] = int(0.03 * kwargs["train_iters"])
+    if kwargs["lrmin"] is None:
+        kwargs["lrmin"] = kwargs["lrmax"] / 10
+
     return Config(**kwargs)
 
 
@@ -158,6 +165,9 @@ if __name__ == "__main__":
 
     torch.manual_seed(config.seed)
     np.random.seed(config.seed)
+
+    print(f"Token budget: {config.batch_size * config.train_iters * config.context_length:,}")
+
 
     chkpt_run_dir = os.path.join(config.chkpt_dir, config.run_name)
     os.makedirs(chkpt_run_dir, exist_ok=True)
