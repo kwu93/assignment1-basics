@@ -147,6 +147,10 @@ Summary
 | bs_512 | 512 | 2e-3 | 1.409 | 2500 | 327.7M | 9.6 min | [kh20fin9](https://wandb.ai/porcini-labs/cs336-basics/runs/kh20fin9) | full budget |
 | bs_1024 | 1024 | 2e-3 | 1.479 | 1250 | 327.7M | 9.3 min | [045jo4dk](https://wandb.ai/porcini-labs/cs336-basics/runs/045jo4dk) | full budget |
 | bs_2048 | 2048 | 2e-3 | 1.599 | 625 | 327.7M | 9.4 min | [sxnl32qq](https://wandb.ai/porcini-labs/cs336-basics/runs/sxnl32qq) | full budget; GPU memory limit (177 GB of 180) |
+| bs32_lr_5e-4 | 32 | 5e-4 | 1.524 | 40000 | 327.7M | 13.3 min | [k1ob2y1j](https://wandb.ai/porcini-labs/cs336-basics/runs/k1ob2y1j) | lr re-check |
+| bs32_lr_1e-3 | 32 | 1e-3 | 1.462 | 40000 | 327.7M | 16.3 min | [vlizbqnr](https://wandb.ai/porcini-labs/cs336-basics/runs/vlizbqnr) | lr re-check; best for batch 32 |
+| bs2048_lr_5e-3 | 2048 | 5e-3 | 1.542 | 625 | 327.7M | 9.6 min | [mp97qa1y](https://wandb.ai/porcini-labs/cs336-basics/runs/mp97qa1y) | lr re-check; best for batch 2048 |
+| bs2048_lr_1e-2 | 2048 | 1e-2 | 1.909 | 625 | 327.7M | 9.8 min | [eqyp59a0](https://wandb.ai/porcini-labs/cs336-basics/runs/eqyp59a0) | lr re-check; too high |
 
 Protocol: fixed token budget of 327.68M for batch 32 and up, so steps scale inversely with batch size.
 Batch 1 and 8 cannot reach the budget in reasonable time, so they ran for 40,000 steps each and are reported with the tokens they reached.
@@ -174,8 +178,12 @@ Findings:
 - At fixed tokens and a fixed lr of 2e-3, final loss is U-shaped in batch size with the minimum at 128 to 256 (1.389 and 1.383, tied within noise).
   Larger batches are step-limited: batch 2048 gets only 625 updates, and its curve is still falling steeply at the end.
   Smaller batches are noisier at this lr: batch 32's val loss rises between 10% and 25% of the run while the schedule is near its peak, the same signature as an lr just past the edge of stability.
-- Both sides of the U are partly an lr artifact, since 2e-3 was tuned at batch 128.
-  Small batches would likely want a lower lr and large batches a higher one; see Next.
+- Both sides of the U were partly an lr artifact, since 2e-3 was tuned at batch 128.
+  Re-tuned, batch 32 improves from 1.929 to 1.462 at lr 1e-3, and batch 2048 from 1.599 to 1.542 at lr 5e-3.
+  The best lr scales with batch size in the expected direction (1e-3 at 32, 2e-3 at 128, 5e-3 at 2048), roughly a factor of 2 to 2.5 per factor of 16 in batch, which is much slower than linear scaling.
+- With each batch size at its best lr, the U is shallower but still there: 1.462 at 32, 1.389 at 128, 1.383 at 256, 1.542 at 2048.
+  Batch 128 to 256 remains the sweet spot at this budget.
+  The remaining penalty at batch 32 is real noise-limited progress per token; the penalty at 2048 is the step limit, since even a well-tuned run cannot converge in 625 updates.
 - At a matched 74M tokens, batch 128 and 256 are also best (1.66), batch 64 is 1.85, batch 8 is 2.59, so larger batches are not more sample-efficient here either.
 - Bigger is not always better: batch 2048 fits in memory and runs as fast as 256 per token, but at this budget it is 0.22 worse because it cannot take enough steps.
 
@@ -199,6 +207,17 @@ Observation: The U-shape was not the expected monotone sample-efficiency curve: 
              Large batches lose because 625 to 1250 updates are not enough to converge under any lr, and the curves are still steep at the end.
 Next:        Check whether the U is an lr artifact: batch 32 at 5e-4 and 1e-3, batch 2048 at 5e-3 and 1e-2 (four runs, about $4).
              Base config stays batch 128, lr 2e-3, since 256 is tied and 128 already has the finished checkpoint.
+
+### bs32_lr_{5e-4,1e-3} and bs2048_lr_{5e-3,1e-2}  (2026-09-24)
+Hypothesis:  The U in final loss versus batch size is partly because lr 2e-3 is too high for batch 32 and too low for batch 2048.
+Command:     GPU=B200 modal run --detach modal_train.py --prefix bs32_ --sweep lrmax=5e-4,1e-3 --fixed-tokens 327680000 --evals-per-run 40 --extra "--batch-size 32 --dtype bfloat16 --eval-iters 50 --chkpt-interval 100000"
+             GPU=B200 modal run --detach modal_train.py --prefix bs2048_ --sweep lrmax=5e-3,1e-2 --fixed-tokens 327680000 --evals-per-run 40 --extra "--batch-size 2048 --dtype bfloat16 --eval-iters 50 --chkpt-interval 100000"
+Result:      batch 32: 5e-4 = 1.524, 1e-3 = 1.462 (was 1.929 at 2e-3); batch 2048: 5e-3 = 1.542, 1e-2 = 1.909 (was 1.599 at 2e-3); about $4.
+Observation: The batch 32 curve at 1e-3 is monotone, so the early rise at 2e-3 was instability from the noisier gradients, not a property of small batches.
+             Batch 2048 at 5e-3 is behind 2e-3 for the first half of the run and only pulls ahead as the rate decays, so a still-higher peak with a longer warmup might do slightly better, but 1e-2 already collapses early.
+             Neither retuned extreme comes within 0.07 of batch 128 at 2e-3.
+Next:        Batch size problem complete. Base config stays batch 128, lr 2e-3.
+             Generation from the lr_2e-3 checkpoint next, then the ablations.
 
 ## 7.2.3 generate
 
