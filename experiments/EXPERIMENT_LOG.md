@@ -138,11 +138,67 @@ Summary
 
 | run | batch size | lr max | final val loss | steps | tokens seen | wall-clock | wandb | notes |
 |---|---|---|---|---|---|---|---|---|
-| | | | | | | | | |
+| bs_1 | 1 | 2e-3 | 3.454 | 40000 | 10.2M (3%) | 15.4 min | [y1aqhvdl](https://wandb.ai/porcini-labs/cs336-basics/runs/y1aqhvdl) | step-capped; full budget would take 5.3 h |
+| bs_8 | 8 | 2e-3 | 2.588 | 40000 | 81.9M (25%) | 14.9 min | [vdu8xlgn](https://wandb.ai/porcini-labs/cs336-basics/runs/vdu8xlgn) | step-capped; full budget would take 63 min |
+| bs_32 | 32 | 2e-3 | 1.929 | 40000 | 327.7M | 16.2 min | [be6ewuv0](https://wandb.ai/porcini-labs/cs336-basics/runs/be6ewuv0) | full budget; unstable early (val rises from 10% to 25% of the run) |
+| bs_64 | 64 | 2e-3 | 1.591 | 20000 | 327.7M | 12.0 min | [plcnpgsu](https://wandb.ai/porcini-labs/cs336-basics/runs/plcnpgsu) | full budget |
+| lr_2e-3 | 128 | 2e-3 | 1.389 | 10000 | 327.7M | 10.4 min | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | full budget; reused from the lr sweep |
+| bs_256 | 256 | 2e-3 | **1.383** | 5000 | 327.7M | 10.0 min | [46wfnyp0](https://wandb.ai/porcini-labs/cs336-basics/runs/46wfnyp0) | full budget; best, within noise of 128 |
+| bs_512 | 512 | 2e-3 | 1.409 | 2500 | 327.7M | 9.6 min | [kh20fin9](https://wandb.ai/porcini-labs/cs336-basics/runs/kh20fin9) | full budget |
+| bs_1024 | 1024 | 2e-3 | 1.479 | 1250 | 327.7M | 9.3 min | [045jo4dk](https://wandb.ai/porcini-labs/cs336-basics/runs/045jo4dk) | full budget |
+| bs_2048 | 2048 | 2e-3 | 1.599 | 625 | 327.7M | 9.4 min | [sxnl32qq](https://wandb.ai/porcini-labs/cs336-basics/runs/sxnl32qq) | full budget; GPU memory limit (177 GB of 180) |
+
+Protocol: fixed token budget of 327.68M for batch 32 and up, so steps scale inversely with batch size.
+Batch 1 and 8 cannot reach the budget in reasonable time, so they ran for 40,000 steps each and are reported with the tokens they reached.
+Every run evaluates on the same 50 batches of 128 sequences (`--eval-batch-size 128`), 40 evals per run, lr 2e-3 for all.
+
+Throughput and memory (B200, bf16, from the 50-step probe and the full runs):
+
+| batch | ms/step | tokens/s | peak GPU memory |
+|---|---|---|---|
+| 1 | 23 | 11k | 4 GB |
+| 8 | 22 | 92k | 4 GB |
+| 32 | 24 | 340k | 6 GB |
+| 64 | 36 | 458k | 7 GB |
+| 128 | 62 | 530k | 12 GB |
+| 256 | 119 | 550k | 25 GB |
+| 512 | 228 | 574k | 48 GB |
+| 1024 | 443 | 592k | 95 GB |
+| 2048 | 892 | 588k | 177 GB |
+| 4096 | | | out of memory |
+
+Findings:
+- Below batch 32 the step time is flat at about 22 ms, so the GPU is launch-bound and tokens per second scale linearly with batch size.
+  Batch 1 processes 11k tokens/s and would need 5.3 hours for the budget; batch 8 would need an hour.
+  Throughput saturates between 128 and 256 at about 550k to 590k tokens/s, so beyond that a larger batch buys no wall-clock at fixed tokens.
+- At fixed tokens and a fixed lr of 2e-3, final loss is U-shaped in batch size with the minimum at 128 to 256 (1.389 and 1.383, tied within noise).
+  Larger batches are step-limited: batch 2048 gets only 625 updates, and its curve is still falling steeply at the end.
+  Smaller batches are noisier at this lr: batch 32's val loss rises between 10% and 25% of the run while the schedule is near its peak, the same signature as an lr just past the edge of stability.
+- Both sides of the U are partly an lr artifact, since 2e-3 was tuned at batch 128.
+  Small batches would likely want a lower lr and large batches a higher one; see Next.
+- At a matched 74M tokens, batch 128 and 256 are also best (1.66), batch 64 is 1.85, batch 8 is 2.59, so larger batches are not more sample-efficient here either.
+- Bigger is not always better: batch 2048 fits in memory and runs as fast as 256 per token, but at this budget it is 0.22 worse because it cannot take enough steps.
 
 Entries
 
-### 
+### probe_bs_{1..8192}  (2026-09-23)
+Hypothesis:  Per-step time has a floor at small batch and throughput saturates somewhere below the memory limit; find both before spending on full runs.
+Command:     GPU=B200 modal run modal_train.py --probe --sweep batch-size=1,8,32,64,256,512,1024,2048,4096,8192 --extra "--lrmax 2e-3 --dtype bfloat16"
+Result:      table above; 4096 and 8192 out of memory at the first forward pass; about $0.50 total.
+Observation: 2048 is the largest batch that fits (177 GB).
+             Throughput plateaus at about 600k tokens/s from batch 128 up.
+Next:        Fixed-token sweep for 32 through 2048; step-capped runs for 1 and 8.
+
+### bs_{32,64,256,512,1024,2048} and bs_{1,8}  (2026-09-23)
+Hypothesis:  At fixed tokens, larger batches lose sample efficiency once past the critical batch size; small batches are sample-efficient but too slow to be practical.
+Command:     GPU=B200 modal run --detach modal_train.py --sweep batch-size=32,64,256,512,1024,2048 --fixed-tokens 327680000 --evals-per-run 40 --extra "--lrmax 2e-3 --dtype bfloat16 --eval-iters 50 --chkpt-interval 100000"
+             GPU=B200 modal run --detach modal_train.py --sweep batch-size=1,8 --evals-per-run 40 --extra "--lrmax 2e-3 --dtype bfloat16 --eval-iters 50 --chkpt-interval 100000 --train-iters 40000"
+Result:      summary table above; all eight runs finished; about $10 total.
+Observation: The U-shape was not the expected monotone sample-efficiency curve: small batches did worse at equal tokens, not better.
+             The batch 32 curve is non-monotone early, which points at lr 2e-3 being too high for its noisier gradients rather than at a sample-efficiency effect.
+             Large batches lose because 625 to 1250 updates are not enough to converge under any lr, and the curves are still steep at the end.
+Next:        Check whether the U is an lr artifact: batch 32 at 5e-4 and 1e-3, batch 2048 at 5e-3 and 1e-2 (four runs, about $4).
+             Base config stays batch 128, lr 2e-3, since 256 is tied and 128 already has the finished checkpoint.
 
 ## 7.2.3 generate
 

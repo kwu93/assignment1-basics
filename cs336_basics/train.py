@@ -55,6 +55,7 @@ class Config:
     train_iters: int
     eval_interval: int
     eval_iters: int # batches to average val loss over
+    eval_batch_size: int # sequences per eval batch, independent of the training batch size
     log_interval: int # how often to log train loss
 
     eps: float
@@ -105,6 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--train-iters", type=int, default=5000)
     t.add_argument("--eval-interval", type=int, default=200)
     t.add_argument("--eval-iters", type=int, default=20)
+    t.add_argument("--eval-batch-size", type=int, default=128)
     t.add_argument("--log-interval", type=int, default=10)
 
     r = p.add_argument_group("runtime")
@@ -148,7 +150,7 @@ def estimate_loss(data, model, config):
         dataset = data[split]
         losses = []
         for _ in range(eval_iters):
-            X, y = get_batch(dataset, config.batch_size, config.context_length, config.device)
+            X, y = get_batch(dataset, config.eval_batch_size, config.context_length, config.device)
             logits = model(X)
             loss = cross_entropy_with_logits(logits, y)
             losses.append(loss.item())
