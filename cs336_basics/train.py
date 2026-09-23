@@ -249,6 +249,13 @@ if __name__ == "__main__":
             print(f"Saving checkpoint at iter {t} to {chkpt_filepath}")
             save_checkpoint(model, optimizer, t, chkpt_filepath)
 
+    split_loss = estimate_loss(data, model, config)
+    print(f"Final train loss: {split_loss['train']} and val loss {split_loss['val']}")
+    logger.log(config.train_iters, **{"eval/train_loss": split_loss["train"], "eval/val_loss":
+    split_loss["val"]})
+
+
+
     chkpt_filepath = os.path.join(chkpt_run_dir, f"iteration_{config.train_iters}")
     print(f"Saving checkpoint at end of training {config.train_iters} to {chkpt_filepath}")
     save_checkpoint(model, optimizer, config.train_iters, chkpt_filepath)
