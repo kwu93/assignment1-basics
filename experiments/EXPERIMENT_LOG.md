@@ -46,13 +46,13 @@ Summary
 
 | run | lr max | final val loss | steps | wall-clock | wandb | notes |
 |---|---|---|---|---|---|---|
-| screen_lr_1e-4 | 1e-4 | 3.002 | 2500 | 157 s | [run](https://wandb.ai/porcini-labs/cs336-basics) | quarter budget, 20 eval batches, last eval at 2250 |
-| screen_lr_3e-4 | 3e-4 | 2.171 | 2500 | 156 s | [run](https://wandb.ai/porcini-labs/cs336-basics) | quarter budget, 20 eval batches, last eval at 2250 |
-| screen_lr_1e-3 | 1e-3 | 1.641 | 2500 | 155 s | [run](https://wandb.ai/porcini-labs/cs336-basics) | quarter budget, 20 eval batches, last eval at 2250 |
-| screen_lr_2e-3 | 2e-3 | 1.577 | 2500 | 159 s | [run](https://wandb.ai/porcini-labs/cs336-basics) | quarter budget, 50 eval batches |
-| screen_lr_3e-3 | 3e-3 | 1.630 | 2500 | 158 s | [run](https://wandb.ai/porcini-labs/cs336-basics) | quarter budget, 20 eval batches, last eval at 2250 |
-| screen_lr_5e-3 | 5e-3 | 1.867 | 2500 | 173 s | [run](https://wandb.ai/porcini-labs/cs336-basics) | quarter budget, 50 eval batches; stable but falling behind |
-| screen_lr_1e-2 | 1e-2 | 3.676 | 2500 | 158 s | [run](https://wandb.ai/porcini-labs/cs336-basics) | quarter budget; diverged after step 250, peak 4.44 at 1250 |
+| screen_lr_1e-4 | 1e-4 | 3.002 | 2500 | 157 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget, 20 eval batches, last eval at 2250 |
+| screen_lr_3e-4 | 3e-4 | 2.171 | 2500 | 156 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget, 20 eval batches, last eval at 2250 |
+| screen_lr_1e-3 | 1e-3 | 1.641 | 2500 | 155 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget, 20 eval batches, last eval at 2250 |
+| screen_lr_2e-3 | 2e-3 | 1.577 | 2500 | 159 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget, 50 eval batches |
+| screen_lr_3e-3 | 3e-3 | 1.630 | 2500 | 158 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget, 20 eval batches, last eval at 2250 |
+| screen_lr_5e-3 | 5e-3 | 1.867 | 2500 | 173 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget, 50 eval batches; stable but falling behind |
+| screen_lr_1e-2 | 1e-2 | 3.676 | 2500 | 158 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget; diverged after step 250, peak 4.44 at 1250 |
 | lr_1e-3 | 1e-3 | 1.422 | 10000 | 598 s | [1r3q6wna](https://wandb.ai/porcini-labs/cs336-basics/runs/1r3q6wna) | full budget; under 1.45 from step 7000 |
 | lr_2e-3 | 2e-3 | **1.389** | 10000 | 627 s | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | full budget; under 1.45 from step 6000; **base model** |
 | lr_3e-3 | 3e-3 | 1.502 | 10000 | 635 s | [7bpj7o2f](https://wandb.ai/porcini-labs/cs336-basics/runs/7bpj7o2f) | full budget; never reaches 1.45 |
