@@ -42,6 +42,7 @@ class Config:
     num_heads: int
     d_ff: int
     rope_theta: float
+    norm: str # pre | post | none
 
     Tw: float
     Tc: float
@@ -88,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--num-heads", type=int, default=16)
     m.add_argument("--d-ff", type=int, default=1344)
     m.add_argument("--rope-theta", type=float, default=10000.0)
+    m.add_argument("--norm", type=str, default="pre", choices=["pre", "post", "none"])
 
     s = p.add_argument_group("schedule")
     s.add_argument("--lrmax", type=float, default=1e-3, help="peak learning rate (Kingma et al. default)")
@@ -196,6 +198,7 @@ if __name__ == "__main__":
         num_heads = config.num_heads, 
         d_ff = config.d_ff, 
         rope_theta = config.rope_theta, 
+        norm = config.norm,
         device = config.device, 
         dtype = config.dtype
     )

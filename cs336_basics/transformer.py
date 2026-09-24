@@ -158,8 +158,12 @@ class MultiheadSelfAttention(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, device=None, dtype=None, rope=None):
+    def __init__(self, d_model, num_heads, d_ff, device=None, dtype=None, rope=None, norm="pre"):
+        # norm: "pre" (RMSNorm before each sublayer), "post" (RMSNorm after each residual add), "none" (no RMSNorm)
         super().__init__()
+        if norm not in ("pre", "post", "none"):
+            raise ValueError(f"norm must be pre, post or none, got {norm!r}")
+        self.norm = norm
         self.attn = MultiheadSelfAttention(
             d_model=d_model,
             num_heads=num_heads,
@@ -170,16 +174,24 @@ class TransformerBlock(nn.Module):
 
         self.ffn = FeedForwardNetwork(d_model,  d_ff, device=device, dtype=dtype)
 
-        self.ln1 = RMSLayerNorm(d_model, eps=1e-5, device=device, dtype=dtype)
-        self.ln2 = RMSLayerNorm(d_model, eps=1e-5, device=device, dtype=dtype)
+        if norm == "none":
+            self.ln1 = nn.Identity()
+            self.ln2 = nn.Identity()
+        else:
+            self.ln1 = RMSLayerNorm(d_model, eps=1e-5, device=device, dtype=dtype)
+            self.ln2 = RMSLayerNorm(d_model, eps=1e-5, device=device, dtype=dtype)
 
     def forward(self, x):
-        x = x + self.attn(self.ln1(x))
-        x = x + self.ffn(self.ln2(x)) # sublayer 1 
+        if self.norm == "post":
+            x = self.ln1(x + self.attn(x))
+            x = self.ln2(x + self.ffn(x))
+        else:  # pre-norm, or no norm at all (ln1/ln2 are identity)
+            x = x + self.attn(self.ln1(x))
+            x = x + self.ffn(self.ln2(x))
         return x
 
 class TransformerLM(nn.Module):
-    def __init__(self, vocab_size, context_length, num_layers, d_model, num_heads, d_ff, rope_theta, device=None, dtype=None):
+    def __init__(self, vocab_size, context_length, num_layers, d_model, num_heads, d_ff, rope_theta, device=None, dtype=None, norm="pre"):
         super().__init__()
         d_k = d_model // num_heads
         self.rope = RotaryPositionalEmbedding(rope_theta, d_k, context_length, device=device)
@@ -187,8 +199,9 @@ class TransformerLM(nn.Module):
 
         self.num_layers = num_layers
         self.token_embeddings = Embedding(vocab_size, d_model, device=device, dtype=dtype)
-        self.layers = nn.Sequential(*[TransformerBlock(d_model, num_heads, d_ff, device, dtype, rope=self.rope) for _ in range(num_layers)])
-        self.ln_final = RMSLayerNorm(d_model, eps=1e-5, device=device, dtype=dtype)
+        self.layers = nn.Sequential(*[TransformerBlock(d_model, num_heads, d_ff, device, dtype, rope=self.rope, norm=norm) for _ in range(num_layers)])
+        # "none" removes every RMSNorm in the model, including the final one; post-norm keeps the final norm as in pre-norm
+        self.ln_final = nn.Identity() if norm == "none" else RMSLayerNorm(d_model, eps=1e-5, device=device, dtype=dtype)
         self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)
         self.context_length = context_length
 
