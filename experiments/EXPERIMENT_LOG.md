@@ -221,15 +221,85 @@ Next:        Batch size problem complete. Base config stays batch 128, lr 2e-3.
 
 ## 7.2.3 generate
 
-Checkpoint used:
-Decoding settings (temperature, top-p, max tokens):
+Checkpoint used: lr_2e-3 at iteration 10000 (val loss 1.389), pulled from the cs336-runs volume.
+Script: `uv run python cs336_basics/generate.py --run lr_2e-3 --pull --prompt "Once upon a time" --max-new-tokens 256`.
+Decoding: prompt "Once upon a time", exactly 256 new tokens per sample with no early stop, so story boundaries appear inline as `<|endoftext|>`.
+Model run on CPU in float32, seed 0 for every setting, about 4.5 s per sample.
+Settings: greedy; ancestral sampling at temperature 1.0 and 0.7; nucleus sampling with top-p 0.9 at temperature 1.0 and 0.8.
 
-Samples
+Samples (2026-09-24)
+
+#### greedy
 
 ```
+Once upon a time, there was a little girl named Lily. She loved to play with her toys and have fun. One day, she found a big box in her room. She was very excited to see what was inside.
+Lily opened the box and found a small, cute kitten. The kitten was very cute and soft. Lily loved the kitten and wanted to keep it as a pet. She took the kitten home and gave it a name. She named the kitten Fluffy.
+Lily and Fluffy played together every day. They had so much fun with the kitten. They were very happy and became best friends. And they lived happily ever after.
+<|endoftext|>
+Once upon a time, there was a little girl named Lily. She loved to play with her toys and eat yummy food. One day, Lily found a big, red apple in her kitchen. She was very happy and wanted to eat it.
+Lily's mom saw her and said, "Lily, you must eat your food before you eat it." Lily did not want to eat her food, but she knew she had to listen to her mom. So, she ate her food very fast.
+After eating, Lily's mom gave her a big hug. She said, "Lily, you are a good girl for eating
 ```
 
-Commentary on fluency and failure modes:
+#### sample, temperature 1.0
+
+```
+Once upon a time, there was a little boy named Tim. Tim had a yummy cauliflower. It was his favorite vegetable. He ate every day to take care of it with care.
+One day, Tim's mom made him a yummy cauliflower. But Tim did not want to eat it. He wanted to eat it now. His mom said, "Take care, Tim. Keep eating your cauliflower."
+One sunny day, while Tim was eating the cauliflower, his friend Lily came over. She looked at the cauliflower and said, "Tim, you cannot eat vegetables like this. They are bad for you."
+But Tim did not listen. He kept eating the cauliflower. After he ate it, something unexpected happened. Tim's cauliflower broke into pieces. Tim was very sad. He learned that he should listen to his friends who care about him.
+<|endoftext|>
+One day, a proud panda named Nana went to the park. Nana liked to watch the kids play and observe their toys. She was a big, happy panda.
+Tom saw a little girl named Lily. Lily was sad and weeping. picks her up, a big boy named Tom, and started to dance. But Lily's heart was break. She ran away in tears.
+Mana saw Lily and wanted to help.
+```
+
+#### sample, temperature 0.7
+
+```
+Once upon a time, there was a little boy named Tim. Tim had a big board. He liked to play with his board in his room. The board was in his room, and it was very comfortable.
+One day, Tim wanted to play with his board. He put the board on the floor and pushed it. He made a fun sound with the board. Tim's mom saw him playing and said, "Tim, please be careful with the board."
+Tim did not listen. He kept playing with his board. He hit the board and it broke. Tim was sad because he could not play with his board anymore. The board was gone, and Tim's day was not fun.
+<|endoftext|>
+One day, a little girl named Lily went to her garden. She saw a big tree with a hole in it. Lily wanted to fill the hole with water. She thought it would be fun to fill the hole with water.
+Lily found a cup and filled it with water. She was very happy. But then, a fierce dog came and barked at her. Lily was scared and ran away.
+Lily sneezed a time, but the dog did not go away. Instead, the dog left the water in the hole. Lily was sad, but she knew she had to
+```
+
+#### nucleus, top-p 0.9, temperature 1.0
+
+```
+Once upon a time, there was a little boy named Tim. Tim had a mysterious board. It was big and had many colors. Tim loved to draw on the board with his colorful chalk.
+One day, Tim went to the park with his mom. He took his chalk with him. At the park, he saw a big slide. Tim wanted to slide down it. He ran to the top and sat down.
+Tim was so happy to slide down the slide. He went up and down again. His mom watched him and smiled. They had a fun day at the park.
+<|endoftext|>
+Once upon a time, there was a boy named Tim. Tim had a toy cat. The cat was a big, red ball. Tim loved the cat very much. They played together every day.
+One day, Tim and the cat went to the park. The sun was very hot. Tim put the cat on a cooler to keep it warm. The cat was grateful for the day. They played and played all day.
+When it was time to go home, Tim said goodbye to the cat. The cat meowed and walked away. Tim was happy to have a new friend. He knew they would play together again soon.
+<|endoftext|>
+Once upon a time, in a small
+```
+
+#### nucleus, top-p 0.9, temperature 0.8
+
+```
+Once upon a time, there was a little boy named Tim. Tim had a big board. He liked to play with his board all day. One day, Tim was playing with his board in the park. He was having fun.
+A girl named Sue came to the park. She saw Tim's board and wanted to play too. "Can I play with your board?" she asked. Tim said, "Yes, but be careful not to spoil it." Sue played with the board and had a lot of fun.
+While they were playing, a dog came running up to them. The dog wanted to play too! The dog jumped on the board and made it go up and down. Tim and Sue were scared. But then, the dog started to dance! Tim and Sue were happy and laughed. The dog danced with them and they all had a great day.
+<|endoftext|>
+Once upon a time, in a small town, there lived a little girl named Mia. Mia loved to play outside and see the sky. One day, she saw a big cloud in the sky. She thought it was a tornado, but she was not scared.
+Mia had an idea. She wanted to build a new house with the tornado. She asked her mom, "Can I build a new
+```
+
+Commentary:
+- Greedy decoding is fluent but collapses onto the single most likely story.
+  Both stories open with "a little girl named Lily" and the second is nearly a template of the first, and it produces the one outright contradiction ("you must eat your food before you eat it").
+- Ancestral sampling at temperature 1.0 is the most diverse and the most error-prone.
+  The first story is coherent; the second breaks down grammatically ("picks her up, a big boy named Tom", "Lily's heart was break") and invents names mid-story.
+- Temperature 0.7 and nucleus sampling sit in between: varied across settings, grammatical throughout, with occasional semantic slips ("put the cat on a cooler to keep it warm", "build a new house with the tornado").
+- Nucleus at top-p 0.9 and temperature 0.8 gave the best sample: two complete, internally consistent stories with dialogue and a resolution.
+- All settings reproduce the TinyStories register (short sentences, a named child, a small problem, a moral) and stop cleanly at story ends, which is at or above the handout's reference sample.
+- Note on the decode implementation: the greedy branch checks for temperature 0 after the logits are already divided by temperature, so temperature 0 yields infinities; use `method="greedy"` at any nonzero temperature instead.
 
 ## 7.3.1 layer_norm_ablation
 
