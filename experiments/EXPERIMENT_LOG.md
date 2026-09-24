@@ -305,13 +305,51 @@ Commentary:
 
 Summary
 
-| run | RMSNorm | final val loss | diverged? | wall-clock | wandb | notes |
-|---|---|---|---|---|---|---|
-| | | | | | | |
+| run | RMSNorm | lr max | final val loss | diverged? | wall-clock | wandb | notes |
+|---|---|---|---|---|---|---|---|
+| lr_2e-3 | yes (pre) | 2e-3 | 1.389 | no | 10.4 min | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | base model |
+| lr_1e-3 | yes (pre) | 1e-3 | 1.422 | no | 10.0 min | [1r3q6wna](https://wandb.ai/porcini-labs/cs336-basics/runs/1r3q6wna) | base architecture at the no-norm optimum, for a matched-lr comparison |
+| nonorm_lr_2e-3 | none | 2e-3 | NaN | yes, step 390 | 9.3 min | [8451w95b](https://wandb.ai/porcini-labs/cs336-basics/runs/8451w95b) | previous optimal lr; loss overflows to NaN during warmup |
+| nonorm_lr_1e-3 | none | 1e-3 | **1.428** | no (one spike at step 1000, recovered) | 9.1 min | [58i6o4mc](https://wandb.ai/porcini-labs/cs336-basics/runs/58i6o4mc) | best no-norm run |
+| nonorm_lr_5e-4 | none | 5e-4 | 1.526 | no | 9.1 min | [tvsbnmzd](https://wandb.ai/porcini-labs/cs336-basics/runs/tvsbnmzd) | stable but too slow |
+
+All runs: batch 128, 10,000 steps, bf16, eval on 50 batches of 128 every 250 steps, commit 2f67eac (`--norm none`).
+
+Validation loss by step:
+
+| step | base 2e-3 | base 1e-3 | no-norm 2e-3 | no-norm 1e-3 | no-norm 5e-4 |
+|---|---|---|---|---|---|
+| 250 | 2.493 | 2.718 | 2.572 | 2.789 | 3.135 |
+| 500 | 2.077 | 2.190 | NaN | 2.259 | 2.486 |
+| 1000 | 1.850 | 1.871 | NaN | 3.6e5 (spike) | 2.080 |
+| 2000 | 1.694 | 1.702 | NaN | 1.786 | 1.852 |
+| 4000 | 1.546 | 1.556 | NaN | 1.623 | 1.676 |
+| 6000 | 1.446 | 1.463 | NaN | 1.505 | 1.570 |
+| 8000 | 1.400 | 1.428 | NaN | 1.440 | 1.533 |
+| 10000 | 1.389 | 1.422 | NaN | 1.428 | 1.526 |
+
+Commentary:
+- At the previous optimal lr of 2e-3 the model without RMSNorm diverges during warmup.
+  The training loss is already 1.4e15 at step 380 and NaN from step 390, as the rate approaches its peak.
+  This is a different failure from the high-lr runs with norm, which collapsed to a finite unigram-level loss because gradient clipping bounded every update.
+  Without normalization the residual stream's scale is unbounded, so the forward pass itself overflows and clipping cannot save it.
+- Halving the lr restores stability: at 1e-3 the no-norm model reaches 1.428, only 0.04 behind the base model at 2e-3 and within 0.006 of the base architecture at the same lr (1.422).
+  It survived one transient blow-up at step 1000 (val 3.6e5) and recovered within a few hundred steps, so 1e-3 is close to its own edge of stability.
+- At 5e-4 the no-norm model is stable throughout but 0.14 worse, so its usable lr range is narrow: a factor of 2 separates divergence from noticeably slow.
+- RMSNorm's main contribution at this scale is therefore stability rather than raw quality.
+  At a matched, stable lr it changes the final loss by less than eval noise; what it buys is the ability to train at a 2x higher rate without overflow and a wider margin around the optimum.
 
 Entries
 
-### 
+### nonorm_lr_{2e-3,1e-3,5e-4}  (2026-09-24)
+Hypothesis:  Removing every RMSNorm will make the base lr of 2e-3 unstable; a lower lr will train but end worse.
+Command:     GPU=B200 modal run --detach modal_train.py --prefix nonorm_ --sweep lrmax=2e-3,1e-3,5e-4 --extra "--norm none --batch-size 128 --train-iters 10000 --dtype bfloat16 --eval-interval 250 --eval-iters 50"
+Result:      2e-3 NaN at step 390; 1e-3 = 1.428; 5e-4 = 1.526; about 9 min each, about $3; commit 2f67eac.
+Observation: Divergence without norm is a forward-pass overflow, not the clipped collapse seen with norm.
+             The lr 1e-3 run's spike at step 1000 and full recovery is worth a figure: it shows the no-norm model living right at its stability edge.
+             The matched-lr gap (1.428 vs 1.422) is smaller than expected; the cost of removing norm is almost entirely the halved lr.
+             No-norm runs are about 2% faster per step (53 vs 54 ms) since the norms are gone, not enough to matter.
+Next:        Post-norm ablation with --norm post at lr 2e-3.
 
 ## 7.3.2 pre_norm_ablation
 
