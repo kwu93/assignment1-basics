@@ -446,11 +446,43 @@ Summary
 
 | run | FFN | d_ff | params | final val loss | wall-clock | wandb | notes |
 |---|---|---|---|---|---|---|---|
-| | | | | | | | |
+| lr_2e-3 | SwiGLU (gated) | 1344 | 22.70M (FFN 8.26M) | **1.389** | 10.4 min | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | base model |
+| silu_lr_2e-3 | SiLU (no gate) | 2048 | 22.83M (FFN 8.39M) | 1.395 | 10.3 min | [qyjqydqw](https://wandb.ai/porcini-labs/cs336-basics/runs/qyjqydqw) | 0.6% more params; 0.007 behind |
+
+Both runs: batch 128, lr 2e-3, 10,000 steps, bf16, eval on 50 batches of 128 every 250 steps, commit d27e82f (`--ffn silu --d-ff 2048`).
+d_ff follows the handout: 8/3 x d_model rounded to a multiple of 64 for SwiGLU, 4 x d_model for the two-matrix SiLU FFN, which matches parameter counts to within 1%.
+
+Validation loss by step and the SiLU gap:
+
+| step | SwiGLU | SiLU | gap |
+|---|---|---|---|
+| 250 | 2.493 | 2.630 | +0.137 |
+| 500 | 2.077 | 2.173 | +0.096 |
+| 1000 | 1.850 | 1.875 | +0.025 |
+| 2000 | 1.694 | 1.696 | +0.002 |
+| 4000 | 1.546 | 1.548 | +0.002 |
+| 6000 | 1.446 | 1.451 | +0.004 |
+| 8000 | 1.400 | 1.406 | +0.006 |
+| 10000 | 1.389 | 1.395 | +0.007 |
+
+Commentary:
+- At matched parameters, gating is worth 0.007 at the end of training, below the eval noise of about 0.01, so on final loss alone the two FFNs are indistinguishable at this scale.
+- The gap is not noise everywhere, though: SwiGLU leads at every one of the 40 evals, is 0.14 ahead at step 250 and 0.10 at step 500, and the gap widens again slowly and monotonically from 0.000 at step 3000 to 0.007 at step 10000.
+  Gating helps most early, when the FFN is learning which features to pass, and then again slightly as the cosine decays.
+- This is consistent with Shazeer's finding that GLU variants give a small but consistent improvement, and with the improvement being modest at 17M parameters on a simple dataset.
+  The consensus choice of SwiGLU rests on that consistency at larger scale rather than on a large effect here.
+- The SiLU FFN uses two matmuls of d_model x 2048 instead of three of d_model x 1344, so per-step time should be similar; the measured 60 vs 54 ms is within the host variance seen across other runs.
 
 Entries
 
-### 
+### silu_lr_2e-3  (2026-09-25)
+Hypothesis:  Removing the gate at matched parameters will cost a small but consistent amount of loss.
+Command:     GPU=B200 modal run --detach modal_train.py --run-name silu_lr_2e-3 --extra "--ffn silu --d-ff 2048 --lrmax 2e-3 --batch-size 128 --train-iters 10000 --dtype bfloat16 --eval-interval 250 --eval-iters 50"
+Result:      SiLU 1.395 vs SwiGLU 1.389; about 10 min, about $1; commit d27e82f.
+Observation: Small final gap (0.007) but SwiGLU leads at every eval, with the largest gaps early (0.14 at step 250).
+             Training was stable (max post-warmup train loss 2.56 vs 2.42).
+Next:        Section 7.3 ablations complete.
+             Remaining: measure the base checkpoint on the full validation set, then OpenWebText (7.4) and the leaderboard (7.5).
 
 ## 7.4 main_experiment (OpenWebText)
 
