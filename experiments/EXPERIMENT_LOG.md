@@ -491,11 +491,107 @@ Summary
 
 | run | config | final val loss | wall-clock | wandb | notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| owt_lr_2e-3 | base architecture, vocab 32000, lr 2e-3 | **4.075** | 12.8 min | [gupkgweh](https://wandb.ai/porcini-labs/cs336-basics/runs/gupkgweh) | best; 4.087 train |
+| owt_lr_1e-3 | base architecture, vocab 32000, lr 1e-3 | 4.133 | 13.2 min | [fnh9bcsq](https://wandb.ai/porcini-labs/cs336-basics/runs/fnh9bcsq) | |
+| lr_2e-3 | TinyStories base for reference | 1.389 | 10.4 min | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | vocab 10000 |
+
+Data: `owt_train.bin` (2.727B tokens, encoded 2026-09-26 with `encode_parallel.py`, byte-identical to `encode_dataset.py` output) and `owt_valid.bin` (63.6M tokens), OWT BPE vocab 32000.
+Same architecture and budget as TinyStories: 4 layers, d_model 512, 16 heads, d_ff 1344, batch 128, 10,000 steps, 327.68M tokens (12% of the OWT train set, vs 60% of TinyStories), bf16, eval on 50 batches of 128 every 250 steps, commit 6e92114.
+The larger vocabulary grows the embedding and output head from 5.1M to 16.4M parameters each, so the model is 45.4M parameters vs 22.7M, and steps take 75 ms vs 54 ms.
+
+Validation loss by step:
+
+| step | OWT 2e-3 | OWT 1e-3 | TinyStories 2e-3 |
+|---|---|---|---|
+| 250 | 5.716 | 5.972 | 2.493 |
+| 1000 | 4.851 | 4.919 | 1.850 |
+| 2000 | 4.554 | 4.587 | 1.694 |
+| 4000 | 4.324 | 4.340 | 1.546 |
+| 6000 | 4.189 | 4.217 | 1.446 |
+| 8000 | 4.099 | 4.149 | 1.400 |
+| 10000 | 4.075 | 4.133 | 1.389 |
+
+Interpreting the losses:
+- 4.07 nats per token on OWT vs 1.39 on TinyStories is not "the model is three times worse"; the two numbers measure different things.
+  Loss is the average surprise per token under the model, and the tokens are not comparable: OWT tokens come from a 32k vocabulary and average 4.4 bytes, TinyStories tokens from a 10k vocabulary over far simpler text.
+  Per byte, the gap is smaller but still large: the OWT model is far from fluent, the TinyStories model is nearly saturated.
+- The bigger difference is the entropy of the text itself.
+  TinyStories is GPT-4-generated children's stories with a tiny effective vocabulary and formulaic structure, so its irreducible loss is low; web text is written by millions of authors about everything, with names, numbers, URLs, and code.
+  A 17M-parameter model with 328M tokens can nearly close the gap to the TinyStories floor and cannot come close to the OWT floor.
+- The curves confirm which regime each run is in: the TinyStories curve flattens over the last 2,000 steps, the OWT curve is still falling by 0.024 per 1,000 steps at the end and would keep improving with more tokens or a bigger model.
+- The train-val gap on OWT is zero within noise (train 4.087 vs val 4.075), as expected for 0.12 epochs; there is no overfitting to blame.
+- The lr optimum carried over: 2e-3 beats 1e-3 by 0.058 at the end and at every eval, the same ordering as on TinyStories, so no re-tune was needed for this pair.
+
+Generated text, `uv run python cs336_basics/generate.py --run owt_lr_2e-3 --tokenizer owt --prompt "The" --max-new-tokens 256`, same five settings as the TinyStories samples:
+
+#### greedy
+
+```
+The first time I’ve been working on the project, I’ve been working on a project that I’ve been working on since I’ve been working on a project that I’ve been working on since I’ve been working on a project that I’ve been working on for years. I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on for years. I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on for years. I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on for years and I’ve been working on a project that I’ve been working on
+```
+
+#### sample, temperature 1.0
+
+```
+The attack is a long way from Kentucky and attacks reality, but wind and mass confrontation can flare the issue and in extreme shops and allow for more YESoukas to stay.
+“We’ve been trying to interpret them and multiply them,” says Jason Julian, a Purdueidy who helped build the site: “When Virginia got this very heavy game and the energy which created it, it took 37 years to finished the game.”
+The game was released to US in 2005, but after the war, Fulham consumed multiple feet. The magazine’s market coverage continued through early, and a growing alarm at gradient speed with the background in “I think it’s saving the community some fraction of my stick” was. It’s the ultimate way through. If the main story is different and even the same image is in control, it spread to the Internet. It doesn’t fit in with that motor.
+But that fact is spelled out when a team rneoted supporters behind him over the love letter from the Kansas City Thunder. In doing so, they shut his father. We simply focused on whom he was telling him to leave behind wouldn’t stand. But when Brewer sees him and the buzz departed. The mileage of the game,
+```
+
+#### sample, temperature 0.7
+
+```
+The U.S. will have to stay in the US for the first time in any other country in order to build a small, sustainable economy.
+“The U.S. is a good way to go and we will continue to work with our government to protect our economy and our country,” he said. “Our government will need to have an anti-tank plan and they will need to be a free-market.”
+Liberal Democrat leader Donald Trump said in a statement: “I would like to thank Donald Trump for bringing in a nation that has helped him through the years.”
+“This is a very dangerous time for the American people and we’re going to turn it over,” Mr. Trump continued. “We have the people that want to see us as people, and I think that’s the best way to spread it.”
+He continued: “We are in the process of putting a halt on our national security and security balance.”
+“We have strong feelings for our nation and our people and our country,” he said.
+Some say the fallout from the revelations about the US military has been a matter of national security.
+“It is very likely that the U.S. government will be able to
+```
+
+#### nucleus, top-p 0.9, temperature 1.0
+
+```
+The attack is a long way from Kentucky and attacks reality, but can be laughable.
+The Roatton ram man will walk in Yokoukas and join the team while struggling to a close. (An officer, a friend, is expected to be a staunch supporter of those in the community.) The Roatton08 weaponized the game and the 12-year-old Nuttami early on Friday.
+“We are so proud to be open in this day,” said Suptrolleraj Gary (Avokichi district developer) Giro-Heregado Gunman and four children at one point or two in our family,” said Deon Johnson, the Seahawks’ official correspondent for Democracy Korea, who reported that they had the laptop and vest.
+After six minutes of stress the canis of the footballer’s affection, including professional teammates, and a big head coach, Jason Addison, who is 31, has taken himself a personal raucous supporters behind him over the weekend. (The Kansas City Thunder’s northwestern Kansas City Warriors boss blamed the fallout.)
+Sporting CSI—Turkey’s governor for Growth—has set to continue keeping his team out of the game, although the game will not be
+```
+
+#### nucleus, top-p 0.9, temperature 0.8
+
+```
+The U.S. will have to stay in the US for the first time to reach an agreement on an extension that would require US officials to detain them.
+The U.S. is a special agent in its own right-wing, the United States’ first U.S. intelligence agency to investigate the alleged failure to investigate the group’s suspected origin. The U.S. is currently in the process of advising foreign officials of the U.S. intelligence community, which is investigating the documents, “and it should have.”
+The U.S. has never expressed any interest in conducting a “domestic and illegal” investigation, or even as a result.
+CIA Director Frank Ocean, who served as the U.S. ambassador in the U.S. and is the first diplomat to step in and complete a list of alleged individuals who have been sent to U.S. soil.
+(Via The Washington Post)<|endoftext|>Administration on the fly
+WASHINGTON — The government in Washington and Washington, D.C. for a time. (Photo by K.S. Pringham/HuKLYTV/Reuters)
+Together with the U.S. government, the government may now
+```
+
+Fluency:
+- Greedy decoding degenerates into a loop within one sentence ("a project that I've been working on for years and ...") and never recovers.
+  The TinyStories model under greedy decoding produced a complete, coherent story; here the most likely continuation at every step is a repetition.
+- Sampling at temperature 1.0 is locally grammatical for a few words at a time but semantically empty, with invented names and non-words ("YESoukas", "rneoted", "Purdueidy") and no thread across sentences.
+- Temperature 0.7 and nucleus sampling give the most readable output: news-register sentences with plausible quote attribution and topic continuity over a paragraph, but the content is nonsense on inspection (Donald Trump as Liberal Democrat leader thanking Donald Trump, "Frank Ocean" as CIA director).
+- Why it is worse than TinyStories with the same model and compute: the model has to spread its 328M-token budget over a vocabulary three times larger and text with far higher entropy, so it learns the surface statistics of news prose (register, quotation structure, entity types) but not the world knowledge that makes the content coherent.
+  A TinyStories story needs a name, an object, and a moral; a news paragraph needs facts, and those need orders of magnitude more parameters and data.
+- The samples do show the model has learned document structure: it produces a dateline, a photo credit, and a clean `<|endoftext|>` boundary followed by a new headline in the nucleus 0.8 sample.
 
 Entries
 
-### 
+### owt_lr_{2e-3,1e-3}  (2026-09-26)
+Hypothesis:  The same architecture and budget will reach roughly 4 on OWT; the lr optimum may shift with the larger vocabulary.
+Command:     GPU=B200 modal run --detach modal_train.py --prefix owt_ --sweep lrmax=2e-3,1e-3 --train-file owt_train.bin --val-file owt_valid.bin --extra "--vocab-size 32000 --batch-size 128 --train-iters 10000 --dtype bfloat16 --eval-interval 250 --eval-iters 50"
+Result:      2e-3 = 4.075, 1e-3 = 4.133; about 13 min each, about $3 including the earlier encoding; commit 6e92114.
+Observation: Ordering matches TinyStories; the curve is still falling at the end.
+             Encoding OWT surfaced two tokenizer bugs (recursive merge, quadratic merge on 100 KB pre-tokens) fixed in commit 6e92114.
+Next:        Leaderboard (7.5): 45-minute B200 run on OWT with whatever modification helps most.
 
 ## 7.5 leaderboard
 
