@@ -229,7 +229,7 @@ class TransformerLM(nn.Module):
 
 
 class AdamW(torch.optim.Optimizer):
-    def __init__(self, params, betas=(0.9, 0.999), lr=1e-3, weight_decay=0.9,eps=1e-8):
+    def __init__(self, params, betas=(0.9, 0.999), lr=1e-3, weight_decay=0.01, eps=1e-8):
         if lr < 0: 
             raise ValueError(f"Invalid learning rate {lr}")
 
@@ -250,6 +250,8 @@ class AdamW(torch.optim.Optimizer):
             eps = group['eps']
             beta1, beta2 = group['betas']
             for p in group['params']:
+                if p.grad is None:
+                    continue
                 state = self.state[p]
                 t = state.get("t", 0)
 
