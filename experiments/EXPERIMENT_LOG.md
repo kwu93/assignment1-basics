@@ -355,13 +355,47 @@ Next:        Post-norm ablation with --norm post at lr 2e-3.
 
 Summary
 
-| run | norm placement | final val loss | wall-clock | wandb | notes |
-|---|---|---|---|---|---|
-| | | | | | |
+| run | norm placement | lr max | final val loss | wall-clock | wandb | notes |
+|---|---|---|---|---|---|---|
+| lr_2e-3 | pre | 2e-3 | **1.389** | 10.4 min | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | base model |
+| postnorm_lr_2e-3 | post | 2e-3 | 1.405 | 10.7 min | [616njnll](https://wandb.ai/porcini-labs/cs336-basics/runs/616njnll) | stable; 0.016 behind pre-norm |
+| lr_1e-3 | pre | 1e-3 | 1.422 | 10.0 min | [1r3q6wna](https://wandb.ai/porcini-labs/cs336-basics/runs/1r3q6wna) | from the lr sweep |
+| postnorm_lr_1e-3 | post | 1e-3 | 1.412 | 10.1 min | [bzfj385m](https://wandb.ai/porcini-labs/cs336-basics/runs/bzfj385m) | stable; 0.010 ahead of pre-norm |
+
+All runs: batch 128, 10,000 steps, bf16, eval on 50 batches of 128 every 250 steps, commit 2f67eac (`--norm post`).
+Post-norm follows the handout's equations 27 and 28: RMSNorm after each residual add, final norm kept.
+
+Validation loss by step:
+
+| step | pre 2e-3 | post 2e-3 | pre 1e-3 | post 1e-3 |
+|---|---|---|---|---|
+| 250 | 2.493 | 2.513 | 2.718 | 2.706 |
+| 1000 | 1.850 | 1.880 | 1.871 | 1.870 |
+| 2000 | 1.694 | 1.728 | 1.702 | 1.710 |
+| 4000 | 1.546 | 1.587 | 1.556 | 1.567 |
+| 6000 | 1.446 | 1.480 | 1.463 | 1.465 |
+| 8000 | 1.400 | 1.422 | 1.428 | 1.421 |
+| 10000 | 1.389 | 1.405 | 1.422 | 1.412 |
+
+Commentary:
+- Post-norm trains stably at both rates, with no spikes: the largest post-warmup training loss is 2.42 at 2e-3, identical to pre-norm.
+  The textbook post-norm instability did not appear at this depth.
+- At the base lr of 2e-3, post-norm is 0.016 behind pre-norm and trails at every eval from step 250 on, so the gap is small but consistent.
+  At 1e-3 the order flips and post-norm is 0.010 ahead, which is within eval noise.
+  Overall, norm placement is worth at most a hundredth or two at 4 layers with warmup, far less than removing the norm entirely (see 7.3.1).
+- The pre-norm advantage is expected to grow with depth: with post-norm the residual stream is renormalized at every block, so gradients to early layers pass through every norm, while pre-norm keeps a clean identity path.
+  With only 4 blocks and 300 warmup steps the model is too shallow for that to bite.
+- Pre-norm is the better default here on the strength of the 2e-3 comparison, but this ablation would need a deeper model or no warmup to reproduce the large gap the literature reports.
 
 Entries
 
-### 
+### postnorm_lr_{2e-3,1e-3}  (2026-09-25)
+Hypothesis:  Post-norm will be unstable or clearly worse at 2e-3, and closer to pre-norm at a lower rate.
+Command:     GPU=B200 modal run --detach modal_train.py --prefix postnorm_ --sweep lrmax=2e-3,1e-3 --extra "--norm post --batch-size 128 --train-iters 10000 --dtype bfloat16 --eval-interval 250 --eval-iters 50"
+Result:      post-norm 2e-3 = 1.405 (pre 1.389); post-norm 1e-3 = 1.412 (pre 1.422); about 10.5 min each, about $2; commit 2f67eac.
+Observation: No instability at either rate, and the gap to pre-norm is a hundredth or two in either direction.
+             Post-norm ran about 10% slower per step (60 to 63 ms vs 54), which is more than the extra work explains; possibly GPU variance between hosts.
+Next:        NoPE ablation: remove RoPE from attention and train at 2e-3.
 
 ## 7.3.3 no_pos_emb
 
