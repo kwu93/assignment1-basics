@@ -44,6 +44,7 @@ class Config:
     rope_theta: float
     norm: str # pre | post | none
     pos_emb: str # rope | none
+    ffn: str # swiglu | silu
 
     Tw: float
     Tc: float
@@ -92,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--rope-theta", type=float, default=10000.0)
     m.add_argument("--norm", type=str, default="pre", choices=["pre", "post", "none"])
     m.add_argument("--pos-emb", type=str, default="rope", choices=["rope", "none"])
+    m.add_argument("--ffn", type=str, default="swiglu", choices=["swiglu", "silu"])
 
     s = p.add_argument_group("schedule")
     s.add_argument("--lrmax", type=float, default=1e-3, help="peak learning rate (Kingma et al. default)")
@@ -202,6 +204,7 @@ if __name__ == "__main__":
         rope_theta = config.rope_theta, 
         norm = config.norm,
         pos_emb = config.pos_emb,
+        ffn = config.ffn,
         device = config.device, 
         dtype = config.dtype
     )

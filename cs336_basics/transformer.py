@@ -56,21 +56,28 @@ class RMSLayerNorm(nn.Module):
         result = x / rms * self.weight
         return result.to(in_dtype)
 
+def silu(x):
+    return torch.sigmoid(x) * x
+
+
 class FeedForwardNetwork(nn.Module):
-    def __init__(self, d_model, d_ff, device=None, dtype=None):
+    def __init__(self, d_model, d_ff, device=None, dtype=None, gated=True):
+        # gated=True: SwiGLU, w2(silu(w1 x) * w3 x), three weight matrices.
+        # gated=False: plain SiLU FFN, w2(silu(w1 x)), two weight matrices (handout eq. 29); use d_ff = 4 * d_model to match params.
         super().__init__()
         self.d_model = d_model
         self.d_ff = d_ff
+        self.gated = gated
 
-        sdev = np.sqrt(2 / (d_model + d_ff))
         self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
         self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
-        self.w3 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.w3 = Linear(d_model, d_ff, device=device, dtype=dtype) if gated else None
 
     def forward(self, x):
-        w1x = self.w1(x)
-        silu = torch.sigmoid(w1x) * w1x
-        return self.w2(silu * self.w3(x))
+        h = silu(self.w1(x))
+        if self.gated:
+            h = h * self.w3(x)
+        return self.w2(h)
 
 class RotaryPositionalEmbedding(nn.Module):
     def __init__(self, theta, d_k, max_seq_len, device=None):
@@ -158,11 +165,14 @@ class MultiheadSelfAttention(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, device=None, dtype=None, rope=None, norm="pre"):
+    def __init__(self, d_model, num_heads, d_ff, device=None, dtype=None, rope=None, norm="pre", ffn="swiglu"):
         # norm: "pre" (RMSNorm before each sublayer), "post" (RMSNorm after each residual add), "none" (no RMSNorm)
+        # ffn: "swiglu" (gated) or "silu" (ungated, handout eq. 29)
         super().__init__()
         if norm not in ("pre", "post", "none"):
             raise ValueError(f"norm must be pre, post or none, got {norm!r}")
+        if ffn not in ("swiglu", "silu"):
+            raise ValueError(f"ffn must be swiglu or silu, got {ffn!r}")
         self.norm = norm
         self.attn = MultiheadSelfAttention(
             d_model=d_model,
@@ -172,7 +182,7 @@ class TransformerBlock(nn.Module):
             dtype=dtype
         )
 
-        self.ffn = FeedForwardNetwork(d_model,  d_ff, device=device, dtype=dtype)
+        self.ffn = FeedForwardNetwork(d_model, d_ff, device=device, dtype=dtype, gated=(ffn == "swiglu"))
 
         if norm == "none":
             self.ln1 = nn.Identity()
@@ -191,7 +201,7 @@ class TransformerBlock(nn.Module):
         return x
 
 class TransformerLM(nn.Module):
-    def __init__(self, vocab_size, context_length, num_layers, d_model, num_heads, d_ff, rope_theta, device=None, dtype=None, norm="pre", pos_emb="rope"):
+    def __init__(self, vocab_size, context_length, num_layers, d_model, num_heads, d_ff, rope_theta, device=None, dtype=None, norm="pre", pos_emb="rope", ffn="swiglu"):
         # pos_emb: "rope" (rotary embeddings on Q and K) or "none" (NoPE: no positional information beyond the causal mask)
         super().__init__()
         if pos_emb not in ("rope", "none"):
@@ -202,7 +212,7 @@ class TransformerLM(nn.Module):
 
         self.num_layers = num_layers
         self.token_embeddings = Embedding(vocab_size, d_model, device=device, dtype=dtype)
-        self.layers = nn.Sequential(*[TransformerBlock(d_model, num_heads, d_ff, device, dtype, rope=self.rope, norm=norm) for _ in range(num_layers)])
+        self.layers = nn.Sequential(*[TransformerBlock(d_model, num_heads, d_ff, device, dtype, rope=self.rope, norm=norm, ffn=ffn) for _ in range(num_layers)])
         # "none" removes every RMSNorm in the model, including the final one; post-norm keeps the final norm as in pre-norm
         self.ln_final = nn.Identity() if norm == "none" else RMSLayerNorm(d_model, eps=1e-5, device=device, dtype=dtype)
         self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)

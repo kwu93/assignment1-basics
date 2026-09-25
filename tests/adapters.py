@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.transformer import (
     cross_entropy_with_logits, 
+    silu,
     Linear, 
     Embedding, 
     RMSLayerNorm, 
@@ -509,7 +510,7 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         SiLU to each element.
     """
 
-    raise NotImplementedError
+    return silu(in_features)
 
 
 def run_get_batch(
