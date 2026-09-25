@@ -12,7 +12,8 @@ Each run also writes `config.json` and `metrics.jsonl` under `checkpoints/<run_n
 - Eval protocol: every 250 steps on random validation batches of 128 x 256 tokens, plus one eval after the final step.
   First screening pass used 20 batches (12% of the 5.46M-token validation set); everything after uses 50 batches (30%).
   Eval-to-eval jitter at 50 batches is about 0.01, so differences below that are not meaningful.
-  The writeup number for any final model should be re-measured on the full validation set (166 batches).
+  The writeup number for any final model is re-measured on the full validation set with `cs336_basics/eval_full.py`, which walks the file in non-overlapping windows (deterministic, 21,332 windows for TinyStories).
+  Base model lr_2e-3 at step 10000: 1.3905 on the full set vs 1.389 from the 50-batch sample, so the sampled numbers in this log are accurate to about a thousandth for finished runs.
 - Token budget: 327,680,000 for full runs (batch 128 x 10,000 steps x 256), 81,920,000 for quarter-budget screening runs (2,500 steps).
 - Schedule: cosine with warmup 3% of steps, decaying to lrmax / 10 (train.py defaults, commit 802947b).
 - AdamW: betas (0.9, 0.95), weight decay 0.01, eps 1e-8, grad clip 1.0. Seed 42 for every run.
@@ -54,7 +55,7 @@ Summary
 | screen_lr_5e-3 | 5e-3 | 1.867 | 2500 | 173 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget, 50 eval batches; stable but falling behind |
 | screen_lr_1e-2 | 1e-2 | 3.676 | 2500 | 158 s | deleted; metrics.jsonl on cs336-runs volume | quarter budget; diverged after step 250, peak 4.44 at 1250 |
 | lr_1e-3 | 1e-3 | 1.422 | 10000 | 598 s | [1r3q6wna](https://wandb.ai/porcini-labs/cs336-basics/runs/1r3q6wna) | full budget; under 1.45 from step 7000 |
-| lr_2e-3 | 2e-3 | **1.389** | 10000 | 627 s | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | full budget; under 1.45 from step 6000; **base model** |
+| lr_2e-3 | 2e-3 | **1.389** | 10000 | 627 s | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | full budget; under 1.45 from step 6000; **base model**; 1.3905 on the full validation set |
 | lr_3e-3 | 3e-3 | 1.502 | 10000 | 635 s | [7bpj7o2f](https://wandb.ai/porcini-labs/cs336-basics/runs/7bpj7o2f) | full budget; never reaches 1.45 |
 | lr_3e-4 | 3e-4 | 1.770 | 10000 | 643 s | [sk424k96](https://wandb.ai/porcini-labs/cs336-basics/runs/sk424k96) | full budget; too slow, flat from step 7000 |
 | lr_5e-3 | 5e-3 | 2.132 | 10000 | 652 s | [flo7oqfs](https://wandb.ai/porcini-labs/cs336-basics/runs/flo7oqfs) | full budget; unstable: min 2.08 at step 1000, rises to 2.56 at 4000, partial recovery |

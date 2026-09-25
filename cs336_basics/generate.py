@@ -6,6 +6,9 @@ Pull the final checkpoint of a run from the cs336-runs Modal volume and sample f
 Reuse an already-downloaded checkpoint:
     uv run python cs336_basics/generate.py --run lr_2e-3 --prompt "Once upon a time" --max-new-tokens 256
 
+Runs trained on OpenWebText use the OWT vocab:
+    uv run python cs336_basics/generate.py --run owt_lr_2e-3 --pull --tokenizer owt --prompt "The"
+
 Each sampling setting produces exactly --max-new-tokens new tokens (no early stop on <|endoftext|>),
 so story boundaries show up inline as the literal <|endoftext|> string.
 """
@@ -22,8 +25,10 @@ from tokenizer import Tokenizer
 from transformer import TransformerLM, decode
 
 MODAL = os.path.expanduser("~/miniforge3/bin/modal")
-VOCAB = "data/bpe/TinyStoriesV2-GPT4-train-vocab.pickle"
-MERGES = "data/bpe/TinyStoriesV2-GPT4-train-merges.pickle"
+TOKENIZERS = {
+    "tinystories": ("data/bpe/TinyStoriesV2-GPT4-train-vocab.pickle", "data/bpe/TinyStoriesV2-GPT4-train-merges.pickle"),
+    "owt": ("data/bpe/owt_vocab.pickle", "data/bpe/owt_merges.pickle"),
+}
 
 # (label, kwargs for decode)
 SAMPLERS = [
@@ -64,6 +69,7 @@ def main() -> None:
     p.add_argument("--prompt", default="Once upon a time")
     p.add_argument("--max-new-tokens", type=int, default=256)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--tokenizer", choices=sorted(TOKENIZERS), default="tinystories", help="which BPE vocab the run was trained with")
     args = p.parse_args()
 
     run_dir = os.path.join(args.chkpt_dir, args.run)
@@ -72,7 +78,8 @@ def main() -> None:
 
     model = load_model(run_dir, args.step)
     # No special tokens, so decode() never stops early and every sample has exactly max_new_tokens new tokens.
-    tokenizer = Tokenizer.from_files(VOCAB, MERGES, special_tokens=None)
+    vocab, merges = TOKENIZERS[args.tokenizer]
+    tokenizer = Tokenizer.from_files(vocab, merges, special_tokens=None)
     print(f"run {args.run} @ step {args.step}, prompt {args.prompt!r}, {args.max_new_tokens} new tokens per sample\n")
 
     for label, kwargs in SAMPLERS:

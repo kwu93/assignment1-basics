@@ -8,6 +8,7 @@ import regex as re
 INF = float('inf')
 
 class Tokenizer:
+    MAX_PRETOKEN_BYTES = 2048  # pre-tokens longer than this are merged in slices (see encode)
     def __init__(self, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[str] | None = None):
         self.vocab = vocab
         self.merges = merges
@@ -64,7 +65,15 @@ class Tokenizer:
                 word = m.group()
                 if word not in self.word_encodings: 
                     ids = [self.inv_vocab[bytes([t])] for t in list(word.encode('utf-8'))]
-                    self.word_encodings[word] = self._apply_merge(ids)
+                    # Merging is quadratic in pre-token length; web text has rare pathological "words"
+                    # (100 KB runs of mojibake). Merge those in fixed-size slices instead of stalling on them.
+                    if len(ids) > self.MAX_PRETOKEN_BYTES:
+                        merged = []
+                        for k in range(0, len(ids), self.MAX_PRETOKEN_BYTES):
+                            merged.extend(self._apply_merge(ids[k:k + self.MAX_PRETOKEN_BYTES]))
+                        self.word_encodings[word] = merged
+                    else:
+                        self.word_encodings[word] = self._apply_merge(ids)
                 output.extend(self.word_encodings[word])
         return output
 
@@ -84,31 +93,32 @@ class Tokenizer:
 
 
     def _apply_merge(self, tokens):
-        if len(tokens) == 1:
-            return tokens
+        # Iterative rather than recursive: one merge per pass, so long pre-tokens (URLs, runs of punctuation)
+        # no longer exhaust the recursion limit. Semantics are unchanged.
+        while len(tokens) > 1:
+            min_rank = INF
+            merge_id = None
+            apply_idx = None
 
-        min_rank = INF
-        merge_id = None
-        apply_idx = None
-        out = []
+            for i, pair in enumerate(zip(tokens[:-1], tokens[1:])):
+                rank, vocab_id = self.mt.get(pair, (INF, INF))
+                if rank < min_rank:
+                    min_rank = rank
+                    merge_id = vocab_id
+                    apply_idx = i
 
-        for i, pair in enumerate(zip(tokens[:-1], tokens[1:])):
-            rank, vocab_id = self.mt.get(pair, (INF, INF))
-            if rank < min_rank:
-                min_rank = rank
-                merge_id = vocab_id
-                apply_idx = i
+            if min_rank == INF:
+                break
 
-        if min_rank == INF:
-            return tokens
-
-        i = 0
-        while i < len(tokens):
-            if i == apply_idx:
-                out.append(merge_id)
+            out = []
+            i = 0
+            while i < len(tokens):
+                if i == apply_idx:
+                    out.append(merge_id)
+                    i += 1
+                else:
+                    out.append(tokens[i])
                 i += 1
-            else:
-                out.append(tokens[i])
-            i += 1
-        return self._apply_merge(out)
+            tokens = out
+        return tokens
 
