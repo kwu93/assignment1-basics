@@ -191,10 +191,13 @@ class TransformerBlock(nn.Module):
         return x
 
 class TransformerLM(nn.Module):
-    def __init__(self, vocab_size, context_length, num_layers, d_model, num_heads, d_ff, rope_theta, device=None, dtype=None, norm="pre"):
+    def __init__(self, vocab_size, context_length, num_layers, d_model, num_heads, d_ff, rope_theta, device=None, dtype=None, norm="pre", pos_emb="rope"):
+        # pos_emb: "rope" (rotary embeddings on Q and K) or "none" (NoPE: no positional information beyond the causal mask)
         super().__init__()
+        if pos_emb not in ("rope", "none"):
+            raise ValueError(f"pos_emb must be rope or none, got {pos_emb!r}")
         d_k = d_model // num_heads
-        self.rope = RotaryPositionalEmbedding(rope_theta, d_k, context_length, device=device)
+        self.rope = RotaryPositionalEmbedding(rope_theta, d_k, context_length, device=device) if pos_emb == "rope" else None
 
 
         self.num_layers = num_layers
