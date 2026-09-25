@@ -403,11 +403,42 @@ Summary
 
 | run | positional encoding | final val loss | wall-clock | wandb | notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| lr_2e-3 | RoPE | **1.389** | 10.4 min | [l6c01mkt](https://wandb.ai/porcini-labs/cs336-basics/runs/l6c01mkt) | base model |
+| nope_lr_2e-3 | none (NoPE) | 1.439 | 9.7 min | [srrz9kw4](https://wandb.ai/porcini-labs/cs336-basics/runs/srrz9kw4) | stable; 0.051 behind at the end |
+
+Both runs: batch 128, lr 2e-3, 10,000 steps, bf16, eval on 50 batches of 128 every 250 steps, commit 36f0fa5 (`--pos-emb none`).
+
+Validation loss by step and the NoPE gap:
+
+| step | RoPE | NoPE | gap |
+|---|---|---|---|
+| 250 | 2.493 | 2.875 | +0.382 |
+| 500 | 2.077 | 2.258 | +0.181 |
+| 1000 | 1.850 | 1.961 | +0.111 |
+| 2000 | 1.694 | 1.758 | +0.065 |
+| 4000 | 1.546 | 1.604 | +0.057 |
+| 6000 | 1.446 | 1.500 | +0.053 |
+| 8000 | 1.400 | 1.453 | +0.052 |
+| 10000 | 1.389 | 1.439 | +0.051 |
+
+Commentary:
+- NoPE trains stably at the base lr and ends 0.051 behind RoPE, a clear and consistent gap, about five times the eval noise and comparable to the entire benefit of tuning the learning rate from 1e-3 to 2e-3.
+- The gap is largest early (0.38 at step 250) and shrinks fast, settling near 0.05 from step 2000 on.
+  Early in training the NoPE model has no direct way to tell positions apart and has to learn one; RoPE provides it for free.
+  Once learned, the residual disadvantage is small but never closes.
+- A causal decoder without position embeddings is not position-blind: the causal mask lets attention infer relative position from how many tokens are visible, and the model recovers most of the RoPE performance that way.
+  That is why NoPE is far better than the 0.38 early gap would suggest, and why the mechanism is known to work at all.
+- RoPE's remaining advantage is worth keeping: it costs nothing in parameters and about 5% in step time here (54 vs 57 ms is within host variance), for a 0.05 loss improvement at this budget.
 
 Entries
 
-### 
+### nope_lr_2e-3  (2026-09-25)
+Hypothesis:  Without positional embeddings the model will still train, since the causal mask leaks position, but end noticeably worse than with RoPE.
+Command:     GPU=B200 modal run --detach modal_train.py --run-name nope_lr_2e-3 --extra "--pos-emb none --lrmax 2e-3 --batch-size 128 --train-iters 10000 --dtype bfloat16 --eval-interval 250 --eval-iters 50"
+Result:      NoPE 1.439 vs RoPE 1.389; about 10 min, about $1; commit 36f0fa5.
+Observation: Gap of 0.05 at the end, consistent from step 2000 on; no instability (max post-warmup train loss 2.72 vs 2.42).
+             The early gap (0.38 at step 250) is the model learning position from scratch.
+Next:        SwiGLU vs SiLU ablation: implement the SiLU feed-forward variant with d_ff sized to match parameters, then train at 2e-3.
 
 ## 7.3.4 swiglu_ablation
 
